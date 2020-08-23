@@ -1,7 +1,6 @@
 // Dependencies 
 const mysql = require('mysql2');
 const inquirer = require('inquirer');
-const { listenerCount } = require('mysql2/lib/pool');
 
 // Mysql connection creation
 const connection = mysql.createConnection({
