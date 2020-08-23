@@ -70,6 +70,8 @@ async function firstPrompt() {
   else if(prompt.action === 'Update an Employee Role') {
     updateEmployeeRole();
   }
+
+  // END THE CONNECTION
   else if(prompt.action === 'Quit Employee Tracker') {
     console.log(`\n` + `
 
@@ -115,10 +117,12 @@ const viewAllRoles = () => {
 // STILL NEED MANAGERS NAME ON VIEW ALL EMPLOYEES
 // Query to view all employees
 const viewAllEmployees = () => {
-  connection.query(`SELECT employee.id, employee.first_name, employee.last_name, employee.manager_id, employee_role.title AS job_title, employee_role.salary, department.name AS department_name
+  connection.query(`SELECT employee.id, employee.first_name, employee.last_name, employee_role.title AS job_title, employee_role.salary, department.name AS department_name,
+  CONCAT(manager.first_name, " ", manager.last_name) AS manager
   FROM employee
   LEFT JOIN employee_role ON employee.role_id = employee_role.id
   LEFT JOIN department ON employee_role.department_id = department.id
+  LEFT JOIN employee manager ON manager.id = employee.manager_id
   ORDER BY employee.manager_id`, function(err, res) {
       if(err) throw err;
 
@@ -264,19 +268,52 @@ const addAnEmployee = () => {
           return rolesArray;
         }
       }
-    ]).then(answer => {
-      connection.query(`SELECT * FROM employee_role WHERE ?`, { title: answer.role }, function(err, res) {
-        if(err) throw err;
+    ])
+    .then(answer => {
+      const roleTitle = answer.role; 
 
-        connection.query(`INSERT INTO employee SET ?`, {
-          first_name: answer.firstName,
-          last_name: answer.lastName,
-          role_id: res[0].id
-        });
-        console.log(`\n New employee added to the database... \n`);
+      connection.query(`SELECT employee.first_name, employee.last_name FROM employee`, function(err, managerRes) {
+        if (err) throw err;
+        inquirer.prompt(
+          {
+            type: 'list',
+            name: 'managerName',
+            message: 'Who is the manager of this employee?',
+            choices: function() {
+              employeeArray = [];
+              managerRes.forEach(employee => {
+                var firstName = employee.first_name;
+                var lastName = employee.last_name;
+                var space = ' ';
+                var employeeName = firstName.concat(space, lastName);
+                employeeArray.push(employeeName);
+              });
+              return employeeArray;
+            }
+          }).then(managerAnswer => {
+            const managerFirst = managerAnswer.managerName.split(' ')[0];
+            const managerLast = managerAnswer.managerName.split(' ')[1];
+            
+            connection.query(`SELECT employee.id FROM employee WHERE ? AND ?`,[{first_name: managerFirst},{last_name: managerLast}], function(err, idRes){
+              if (err) throw err;
+              const managerId = idRes[0].id;
 
-        // Return to first prompt
-        firstPrompt();
+              connection.query(`SELECT * FROM employee_role WHERE ?`, { title: roleTitle }, function(err, res) {
+                    if(err) throw err;
+            
+                    connection.query(`INSERT INTO employee SET ?`, {
+                      first_name: answer.firstName,
+                      last_name: answer.lastName,
+                      role_id: res[0].id,
+                      manager_id: managerId
+                    });
+                    console.log(`\n New employee added to the database... \n`);
+            
+                    // Return to first prompt
+                    firstPrompt();
+                });
+            });
+          });
       });
     });
   });
@@ -304,9 +341,7 @@ const updateEmployeeRole = () => {
       }
     }).then(answer => {
       const employeeFirst = answer.specifiedEmployee.split(' ')[0];
-      console.log(employeeFirst);
       const employeeLast = answer.specifiedEmployee.split(' ')[1];
-      console.log(employeeLast);
 
       connection.query(`SELECT * FROM employee_role`, function(err, res) {
         if(err) throw(err);
